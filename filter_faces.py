@@ -1,3 +1,4 @@
+from locale import normalize
 import sys
 import cv2
 import numpy as np
@@ -23,34 +24,74 @@ final_dir.mkdir(exist_ok=True)
 input_dir = Path("aligned/apple-data")
 sub_dirs = list(input_dir.glob("*/"))
 
+class ImagePathDataset(Dataset):
+    """Simple dataset for loading samples from image paths"""
+    def __init__(self, im_paths, transform=None, return_path=False) -> None:
+        super().__init__()
+        self.image_files = im_paths
+        self.transform = transform
+        self.return_path = return_path
 
+    def __getitem__(self, index):
+        img = Image.open(self.image_files[index]).convert("RGB")
+        if self.transform:
+            img = self.transform(img)
+
+        if self.return_path:
+            im_path = str(self.image_files[index])
+            return im_path, img
+        else:
+            return img
+
+    def __len__(self):
+        return len(self.image_files)
+
+import kornia
 def variance_of_laplacian(image):
 	# compute the Laplacian of the image and then return the focus
 	# measure, which is simply the variance of the Laplacian
-	return cv2.Laplacian(image, cv2.CV_64F).var()
+	# return cv2.Laplacian(image, cv2.CV_64F).var()
+    return kornia.filters.laplacian(image, 3, normalized=False).var(dim=[2,3])
 
 all_count = 0
+bs = 64
+
+n_px = 224
+clip_preporc = transforms.Compose([
+        transforms.Resize(n_px, interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.CenterCrop(n_px),
+        transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+    ])
+
+device = "cuda:0"
+model, preprocess = clip.load("ViT-B/32", device=device)
+sim_threshold = 0.96
+
 for movie_dir in tqdm(sub_dirs):
-    sim_threshold = 0.96
     all_ims = list(movie_dir.rglob("*.png"))
-    device = "cuda:0"
-    model, preprocess = clip.load("ViT-B/32", device=device)
 
     feat = []
     ds = []
     if len(all_ims) == 0:
         continue
-    for im_path in tqdm(all_ims):
-        im = Image.open(im_path)
+
+    dataset = ImagePathDataset(all_ims, transform=transforms.ToTensor())
+    loader = DataLoader(dataset, bs, num_workers=8)
+
+    print(f"processing {movie_dir}")
+    for batch in tqdm(loader):
         with torch.no_grad():
-            inp = preprocess(im).to(device).unsqueeze(0)
+            batch = batch.to(device)
+            inp = clip_preporc(batch)
             feat.append(model.encode_image(inp))
 
-        gray = np.array(im.convert("L"))
-        gray = gray[4*64:4*192, 4*64:4*192]
-        d = variance_of_laplacian(gray)
+        # gray = np.array(im.convert("L"))
+            gray = batch.mean(1, keepdim=True)
+            gray = 255*gray[:, :, 4*64:4*192, 4*64:4*192]
+            d = variance_of_laplacian(gray).cpu()
         ds.append(d)
 
+    print(f"calculated metrics")
 
     feat = torch.cat(feat, dim=0)
     feat_norm = feat/feat.norm(dim=1, keepdim=True)
@@ -58,8 +99,10 @@ for movie_dir in tqdm(sub_dirs):
 
     avail = np.ones((len(all_ims), ))
     curr = 0
+    ds = torch.cat(ds, dim=0)
     ds = np.array(ds)
     count = 0
+    print(f"processing frames")
     while any(avail):
         current_sims = sims[curr]*avail
 
