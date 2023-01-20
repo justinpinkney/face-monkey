@@ -68,7 +68,7 @@ model, preprocess = clip.load("ViT-B/32", device=device)
 sim_threshold = 0.96
 
 for movie_dir in tqdm(sub_dirs):
-    all_ims = list(movie_dir.rglob("*.png"))
+    all_ims = list(movie_dir.rglob("*.jpg"))
 
     feat = []
     ds = []
@@ -121,7 +121,7 @@ for movie_dir in tqdm(sub_dirs):
             # this_dir = final_dir/movie_dir.name
             this_dir = final_dir
             this_dir.mkdir(exist_ok=True)
-            shutil.copy(chosen, this_dir/f"{all_count:06}.png")
+            shutil.copy(chosen, this_dir/f"{all_count:06}.jpg")
             count += 1
             all_count += 1
             next_available = np.argwhere(avail==1)

@@ -3,8 +3,9 @@ from pathlib import Path
 import subprocess
 import random
 
-data_path = "fmonk/hd-trailers.json"
+data_path = "hd-trailers-v1.json"
 output_dir = Path("apple-data")
+output_dir.mkdir(exist_ok=True)
 with open(data_path, "rt") as f:
     data = json.load(f)
 

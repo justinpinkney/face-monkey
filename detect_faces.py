@@ -96,7 +96,7 @@ def process_video(filename, out_dir=Path("frames")):
     h_threshold = 256
     ratio_thresh = 0.5
     target_w = 15*32
-    n_workers = 64
+    n_workers = 32
     executor = ThreadPoolExecutor(max_workers=n_workers)
 
     ds = VideoDataset(filename)
@@ -170,7 +170,7 @@ def do_crops(fname, frame, lm_mouth_outer, eye_left, eye_right, idx, var_thresh=
     im = align_face(img_in, lm_mouth_outer, eye_left, eye_right).convert("RGB")
     var = variance_of_laplacian(np.array(im))
     if var > var_thresh:
-        im.save(fname.parent / f"{fname.stem}-{idx}.png")
+        im.save(fname.parent / f"{fname.stem}-{idx}.jpg", quality=95)
 
 if __name__ == "__main__":
     video_dir = Path("apple-data")
@@ -197,5 +197,9 @@ if __name__ == "__main__":
         else:
             this_dir.mkdir(parents=True)
             print(f"processing {this_dir}")
-            process_video(str(f), out_dir=this_dir)
+            try:
+                process_video(str(f), out_dir=this_dir)
+            except Exception as e:
+                print(f"failed on {this_dir}")
+                print(e)
     print("Finished, waiting")
